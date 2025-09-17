@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Transaction } from '../utils/transactionService';
 import { TransactionService } from '../utils/transactionService';
-import { FileText, DollarSign, Package, Zap, X, Calendar, Filter } from 'lucide-react';
+import { FileText, DollarSign, Package, Zap, X, Calendar, Filter, Wifi, WifiOff, RefreshCw, Send } from 'lucide-react';
+import OfflineService from '../utils/offlineService';
 
 // Tipos para filtros
 interface FiltrosTransacciones {
@@ -27,10 +28,17 @@ interface StatsTransacciones {
 }
 
 const ControlTransaccionesModule: React.FC = () => {
+  // Servicio offline
+  const offlineService = OfflineService.getInstance();
+  
   // Estados principales
   const [transacciones, setTransacciones] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Estados para conectividad
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingTransactions, setPendingTransactions] = useState(0);
   
   // Estados para filtros
   const [filtros, setFiltros] = useState<FiltrosTransacciones>({
@@ -69,9 +77,29 @@ const ControlTransaccionesModule: React.FC = () => {
       setError(null);
       console.log('🔄 Cargando transacciones iniciales...');
       
-      // Obtener últimas 30 transacciones ordenadas por fecha de creación descendente
+      // En modo offline, usar transacciones cacheadas
+      if (!isOnline) {
+        console.log('📦 Offline mode - loading cached transactions');
+        const cachedTransactions = localStorage.getItem('stockflow_transactions');
+        if (cachedTransactions) {
+          const transactions = JSON.parse(cachedTransactions);
+          setTransacciones(transactions);
+          calcularEstadisticas(transactions);
+          extraerOpcionesFiltros(transactions);
+          console.log('✅ Cached transactions loaded:', transactions.length, 'registros');
+        } else {
+          setTransacciones([]);
+          console.log('⚠️ No cached transactions available');
+        }
+        return;
+      }
+
+      // Si estamos online, cargar desde Supabase
       const data = await TransactionService.getAllTransactions(30, 0);
       setTransacciones(data);
+      
+      // Guardar en caché para uso offline
+      localStorage.setItem('stockflow_transactions', JSON.stringify(data));
       
       // Calcular estadísticas
       calcularEstadisticas(data);
@@ -79,7 +107,7 @@ const ControlTransaccionesModule: React.FC = () => {
       // Extraer opciones para filtros
       extraerOpcionesFiltros(data);
       
-      console.log('✅ Transacciones iniciales cargadas:', data.length, 'registros');
+      console.log('✅ Transacciones iniciales cargadas y cacheadas:', data.length, 'registros');
     } catch (err) {
       console.error('❌ Error cargando transacciones iniciales:', err);
       setError('Error al cargar las transacciones');
@@ -95,7 +123,42 @@ const ControlTransaccionesModule: React.FC = () => {
       setError(null);
       console.log('🔍 Aplicando filtros:', filtros);
       
-      // Construir objeto de filtros para el servicio
+      // En modo offline, filtrar las transacciones cacheadas localmente
+      if (!isOnline) {
+        console.log('📦 Offline mode - filtering cached transactions');
+        const cachedTransactions = localStorage.getItem('stockflow_transactions');
+        if (cachedTransactions) {
+          let transactions = JSON.parse(cachedTransactions);
+          
+          // Aplicar filtros localmente
+          if (filtros.tipoTransaccion) {
+            transactions = transactions.filter((t: Transaction) => 
+              t.tipo_transaccion === filtros.tipoTransaccion
+            );
+          }
+          
+          if (filtros.operacion) {
+            transactions = transactions.filter((t: Transaction) => 
+              t.operacion === filtros.operacion
+            );
+          }
+          
+          if (filtros.productoNombre) {
+            transactions = transactions.filter((t: Transaction) => 
+              t.producto_nombre.toLowerCase().includes(filtros.productoNombre.toLowerCase())
+            );
+          }
+          
+          setTransacciones(transactions);
+          calcularEstadisticas(transactions);
+          console.log('✅ Cached transactions filtered:', transactions.length, 'registros');
+        } else {
+          setTransacciones([]);
+        }
+        return;
+      }
+      
+      // Si estamos online, usar el servicio normal
       const filtrosServicio: any = {};
       
       if (filtros.tipoTransaccion) {
@@ -242,6 +305,47 @@ const ControlTransaccionesModule: React.FC = () => {
   useEffect(() => {
     console.log('🚀 ControlTransaccionesModule montado, cargando datos iniciales...');
     cargarTransaccionesIniciales();
+    
+    // Actualizar contador de transacciones pendientes
+    setPendingTransactions(offlineService.getPendingTransactionCount());
+  }, []);
+
+  // useEffect: Manejar cambios de conectividad
+  useEffect(() => {
+    const handleOnline = async () => {
+      console.log('🌐 Connection restored, syncing...');
+      setIsOnline(true);
+      
+      try {
+        const { synced, failed } = await offlineService.syncPendingTransactions();
+        setPendingTransactions(offlineService.getPendingTransactionCount());
+        
+        if (synced > 0) {
+          console.log(`✅ Sincronizadas ${synced} transacciones`);
+          // Recargar transacciones después de sincronizar
+          await cargarTransaccionesIniciales();
+        }
+        
+        if (failed > 0) {
+          console.log(`⚠️ ${failed} transacciones fallaron`);
+        }
+      } catch (error) {
+        console.error('Error during auto-sync:', error);
+      }
+    };
+
+    const handleOffline = () => {
+      console.log('📴 Connection lost, switching to offline mode');
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   // useEffect: Aplicar filtros cuando cambien
@@ -260,15 +364,65 @@ const ControlTransaccionesModule: React.FC = () => {
       <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-green-50 to-teal-50 px-6 py-8 border-b border-gray-200">
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-green-100">
-              <FileText className="h-8 w-8 text-green-600" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-green-100">
+                <FileText className="h-8 w-8 text-green-600" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Control de Transacciones</h1>
+                <p className="text-lg text-gray-600 mt-2">
+                  Lógica de datos implementada - {transacciones.length} transacciones cargadas
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Control de Transacciones</h1>
-              <p className="text-lg text-gray-600 mt-2">
-                Lógica de datos implementada - {transacciones.length} transacciones cargadas
-              </p>
+            
+            {/* Indicadores de conectividad */}
+            <div className="flex items-center gap-4">
+              {/* Estado de conectividad */}
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
+                isOnline 
+                  ? 'bg-green-100 text-green-700' 
+                  : 'bg-red-100 text-red-700'
+              }`}>
+                {isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+                <span className="text-sm font-medium">
+                  {isOnline ? 'En línea' : 'Sin conexión'}
+                </span>
+              </div>
+              
+              {/* Botón de actualizar datos */}
+              <button
+                onClick={cargarTransaccionesIniciales}
+                disabled={loading}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                Actualizar Datos
+              </button>
+              
+              {/* Botón de sincronización manual */}
+              {pendingTransactions > 0 && isOnline && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const { synced, failed } = await offlineService.syncPendingTransactions();
+                      setPendingTransactions(offlineService.getPendingTransactionCount());
+                      
+                      if (synced > 0) {
+                        console.log(`✅ Sincronizadas ${synced} transacciones`);
+                        await cargarTransaccionesIniciales();
+                      }
+                    } catch (error) {
+                      console.error('Error syncing:', error);
+                    }
+                  }}
+                  className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium"
+                >
+                  <Send className="h-4 w-4" />
+                  Sincronizar ({pendingTransactions})
+                </button>
+              )}
             </div>
           </div>
         </div>
