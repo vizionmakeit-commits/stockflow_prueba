@@ -8,9 +8,12 @@ import {
   MapPin,
   Zap,
   DollarSign,
-  AlertTriangle
+  AlertTriangle,
+  Cloud,
+  CloudOff,
+  Clock
 } from 'lucide-react';
-import { supabase } from '../utils/supabaseClient';
+import OfflineService from '../utils/offlineService';
 
 // Interfaces para datos de Supabase
 interface ProductoSupabase {
@@ -95,6 +98,13 @@ const UpdateUnidadesModule: React.FC = () => {
   const [productos, setProductos] = useState<ProductoSupabase[]>([]);
   const [inventario, setInventario] = useState<InventarioSupabase[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [dataFromCache, setDataFromCache] = useState(false);
+  const [pendingTransactions, setPendingTransactions] = useState(0);
+  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
+  
+  // Instancia del servicio offline
+  const offlineService = OfflineService.getInstance();
 
   // Estados para el formulario
   const [selectedDestilado, setSelectedDestilado] = useState('');
@@ -108,47 +118,142 @@ const UpdateUnidadesModule: React.FC = () => {
   // Estado para toast notifications
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  // Cleanup al desmontar el componente
+  useEffect(() => {
+    return () => {
+      offlineService.cleanup();
+    };
+  }, []);
+
   // Cargar datos al montar el componente
   useEffect(() => {
     console.log('🚀 UpdateUnidadesModule mounted, loading initial data...');
     loadData();
   }, []);
 
-  const loadData = async () => {
-    console.log('🔄 Starting loadData from Supabase...');
+  // Manejar eventos de conectividad
+  useEffect(() => {
+    const handleOnline = async () => {
+      console.log('🌐 Back online, syncing automatically...');
+      setIsOnline(true);
+      setIsAutoSyncing(true);
+      
+      // Mostrar notificación inmediata
+      showToast('🌐 Conexión recuperada. Sincronizando automáticamente...', 'success');
+      
+      try {
+        // Primero sincronizar transacciones pendientes automáticamente
+        const pendingCount = offlineService.getPendingTransactionCount();
+        if (pendingCount > 0) {
+          console.log(`🔄 Auto-syncing ${pendingCount} pending transactions...`);
+          const { synced, failed } = await offlineService.syncPendingTransactions();
+          
+          if (synced > 0) {
+            showToast(`✅ ${synced} transacciones sincronizadas automáticamente`, 'success');
+          }
+          if (failed > 0) {
+            showToast(`❌ ${failed} transacciones fallaron. Puedes reintentar manualmente.`, 'error');
+          }
+        }
+        
+        // Luego recargar datos frescos automáticamente
+        console.log('🔄 Auto-refreshing data from server...');
+        const { productos: productosData, inventario: inventarioData } = await offlineService.loadAndCacheData();
+        setProductos(productosData);
+        setInventario(inventarioData);
+        setDataFromCache(false);
+        
+        // Actualizar conteo de pendientes
+        setPendingTransactions(offlineService.getPendingTransactionCount());
+        
+        // Notificación final de éxito
+        showToast('🎉 Sincronización automática completada. Datos actualizados.', 'success');
+        
+      } catch (error) {
+        console.error('❌ Error during auto-sync:', error);
+        showToast('⚠️ Error en sincronización automática. Usando datos locales.', 'error');
+      } finally {
+        setIsAutoSyncing(false);
+      }
+    };
+    
+    const handleOffline = () => {
+      console.log('📵 Gone offline');
+      setIsOnline(false);
+      setIsAutoSyncing(false);
+      showToast('📵 Modo offline activado. Las transacciones se sincronizarán automáticamente al reconectar.', 'success');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const loadData = async (retryCount = 0) => {
+    console.log(`🔄 Starting loadData... (attempt ${retryCount + 1})`);
     setLoadingProducts(true);
+    
     try {
-      // Cargar productos desde Supabase
-      const { data: productosData, error: productosError } = await supabase
-        .from('productos')
-        .select('id, nombre, destilado, costo_unitario, capacidad_ml_por_unidad, seguimiento_stock')
-        .eq('seguimiento_stock', true)
-        .order('destilado', { ascending: true })
-        .order('nombre', { ascending: true });
-
-      if (productosError) {
-        throw new Error(`Error cargando productos: ${productosError.message}`);
-      }
-
-      // Cargar inventario desde vista_inventario
-      const { data: inventarioData, error: inventarioError } = await supabase
-        .from('vista_inventario')
-        .select('producto_id, producto_nombre, destilado, ubicacion, cantidad_unidades, costo_unitario, valoracion_total');
-
-      if (inventarioError) {
-        throw new Error(`Error cargando inventario: ${inventarioError.message}`);
-      }
-
-      setProductos(productosData || []);
-      setInventario(inventarioData || []);
+      const { productos: productosData, inventario: inventarioData, fromCache } = await offlineService.getData();
+      
+      setProductos(productosData);
+      setInventario(inventarioData);
+      setDataFromCache(fromCache);
       
       console.log('✅ Data loaded successfully:', {
-        productos: productosData?.length || 0,
-        inventario: inventarioData?.length || 0
+        productos: productosData.length,
+        inventario: inventarioData.length,
+        fromCache,
+        source: fromCache ? 'Cache' : 'Supabase',
+        sampleProducto: productosData[0],
+        sampleInventario: inventarioData[0]
       });
+
+      // Actualizar conteo de transacciones pendientes
+      setPendingTransactions(offlineService.getPendingTransactionCount());
+
+      // Si los datos vienen del caché y estamos online, mostrar notificación
+      if (fromCache && navigator.onLine) {
+        showToast('Usando datos en caché. Los datos se actualizarán automáticamente.', 'success');
+      }
+
+      // Si llegamos aquí después de retries, mostrar éxito
+      if (retryCount > 0) {
+        showToast('Datos cargados correctamente tras reconexión', 'success');
+      }
+
     } catch (error) {
       console.error('❌ Error loading data:', error);
-      showToast('Error al cargar datos desde Supabase', 'error');
+      
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      
+      // Si es un error de conectividad y no hemos intentado muchas veces, retry
+      if (retryCount < 2 && (
+        errorMessage.includes('fetch') || 
+        errorMessage.includes('network') || 
+        errorMessage.includes('timeout') ||
+        errorMessage.includes('offline') ||
+        errorMessage.includes('No hay datos en caché')
+      )) {
+        console.log(`🔄 Retrying in 2 seconds... (attempt ${retryCount + 2})`);
+        showToast(`Error de conexión. Reintentando... (${retryCount + 2}/3)`, 'error');
+        
+        setTimeout(() => {
+          loadData(retryCount + 1);
+        }, 2000);
+        return;
+      }
+      
+      // Si hemos agotado los reintentos o es otro tipo de error
+      const finalMessage = navigator.onLine 
+        ? `Error al cargar datos: ${errorMessage}`
+        : 'Sin conexión y no hay datos en caché. Conecta a internet para cargar datos.';
+        
+      showToast(finalMessage, 'error');
     } finally {
       setLoadingProducts(false);
     }
@@ -159,10 +264,33 @@ const UpdateUnidadesModule: React.FC = () => {
   };
 
   // Obtener listas únicas para filtros
-  const destilados = [...new Set(productos.map(p => p.destilado).filter(Boolean))].sort();
-  const productosDisponibles = selectedDestilado 
-    ? productos.filter(p => p.destilado === selectedDestilado).map(p => p.nombre).sort()
-    : [];
+  const destilados = React.useMemo(() => {
+    if (productos.length === 0) return [];
+    
+    const uniqueDestilados = [...new Set(productos.map(p => p.destilado).filter((d): d is string => 
+      d !== null && d !== undefined && typeof d === 'string' && d.trim() !== ''
+    ))].sort();
+    
+    console.log('✅ Destilados computed:', uniqueDestilados.length, uniqueDestilados);
+    return uniqueDestilados;
+  }, [productos]);
+  
+  const productosDisponibles = React.useMemo(() => {
+    if (!selectedDestilado || productos.length === 0) return [];
+    
+    const available = productos.filter(p => p.destilado === selectedDestilado).map(p => p.nombre).sort();
+    console.log('✅ Productos disponibles for', selectedDestilado, ':', available.length, available);
+    return available;
+  }, [selectedDestilado, productos]);
+
+  // Debug: Log para verificar datos
+  React.useEffect(() => {
+    if (productos.length > 0) {
+      console.log('✅ Productos cargados:', productos.length);
+      console.log('✅ Destilados disponibles:', destilados.length, destilados);
+      console.log('✅ Inventario cargado:', inventario.length);
+    }
+  }, [productos, destilados, inventario]);
 
   // Obtener producto seleccionado del inventario para cálculos
   const selectedInventoryItem = inventario.find(item => 
@@ -252,10 +380,8 @@ const UpdateUnidadesModule: React.FC = () => {
       };
 
       // Determinar payload final basado en operación
-      let finalPayload: TransactionPayload | TransactionPayload[];
-      
       if (operacion === 'Transferencia') {
-        // Para transferencias, crear dos transacciones
+        // Para transferencias, procesar como dos transacciones separadas
         const salidaPayload: TransactionPayload = {
           ...basePayload,
           movimiento: {
@@ -276,42 +402,33 @@ const UpdateUnidadesModule: React.FC = () => {
           }
         };
         
-        finalPayload = [salidaPayload, entradaPayload];
-        console.log('📦 Created transfer transactions:', finalPayload);
+        console.log('📦 Processing transfer as two transactions');
+        
+        // Procesar ambas transacciones
+        const salidaResult = await offlineService.processTransaction(salidaPayload);
+        const entradaResult = await offlineService.processTransaction(entradaPayload);
+        
+        const isOffline = salidaResult.offline || entradaResult.offline;
+        
+        if (isOffline) {
+          showToast(`✅ Transferencia guardada ${isOnline ? 'para sincronización' : 'offline'} (2 transacciones)`, 'success');
+        } else {
+          showToast('✅ Transferencia procesada exitosamente (2 transacciones)', 'success');
+        }
       } else {
         // Para otras operaciones, usar transacción única
-        finalPayload = basePayload;
-        console.log('📦 Created single transaction:', finalPayload);
+        console.log('📦 Processing single transaction');
+        const result = await offlineService.processTransaction(basePayload);
+        
+        if (result.offline) {
+          showToast(`✅ Transacción guardada ${isOnline ? 'para sincronización' : 'offline'}`, 'success');
+        } else {
+          showToast('✅ Transacción procesada exitosamente', 'success');
+        }
       }
-
-      // Enviar al nuevo endpoint create-manual-transaction
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-manual-transaction`;
       
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(finalPayload)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`Error procesando transacción: ${response.status} - ${errorData.error || 'Error desconocido'}`);
-      }
-
-      const responseData = await response.json();
-      console.log('✅ Transaction processed successfully:', responseData);
-      
-      // Mostrar mensaje de éxito
-      if (responseData.success) {
-        const transactionCount = Array.isArray(finalPayload) ? finalPayload.length : 1;
-        const operationType = operacion === 'Transferencia' ? 'Transferencia' : operacion;
-        showToast(`✅ ${operationType} procesada exitosamente (${transactionCount} transacción${transactionCount > 1 ? 'es' : ''})`, 'success');
-      } else {
-        throw new Error(responseData.error || 'Error procesando transacción');
-      }
+      // Actualizar conteo de transacciones pendientes
+      setPendingTransactions(offlineService.getPendingTransactionCount());
       
       // Limpiar formulario
       setSelectedDestilado('');
@@ -333,8 +450,13 @@ const UpdateUnidadesModule: React.FC = () => {
   const handleRefreshData = async () => {
     setLoadingProducts(true);
     try {
-      await loadData();
-      showToast('Datos actualizados correctamente', 'success');
+      const { productos: productosData, inventario: inventarioData, fromCache } = await offlineService.getData(true); // Forzar refresh
+      setProductos(productosData);
+      setInventario(inventarioData);
+      setDataFromCache(fromCache);
+      setPendingTransactions(offlineService.getPendingTransactionCount());
+      
+      showToast(fromCache ? 'Datos cargados desde caché' : 'Datos actualizados desde servidor', 'success');
     } catch (error) {
       console.error('Error refreshing data:', error);
       showToast('Error al actualizar datos', 'error');
@@ -363,21 +485,95 @@ const UpdateUnidadesModule: React.FC = () => {
                 <Package className="h-8 w-8 text-blue-600" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">Update por Unidades</h1>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-3xl font-bold text-gray-900">Update por Unidades</h1>
+                  
+                  {/* Indicador de conectividad */}
+                  {!isOnline && (
+                    <div className="flex items-center gap-2 bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium">
+                      <CloudOff className="h-4 w-4" />
+                      Sin conexión
+                    </div>
+                  )}
+                  
+                  {/* Indicador de datos desde caché */}
+                  {isOnline && dataFromCache && (
+                    <div className="flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+                      <Cloud className="h-4 w-4" />
+                      Datos en caché
+                    </div>
+                  )}
+                  
+                  {/* Indicador de sincronización automática */}
+                  {isAutoSyncing && (
+                    <div className="flex items-center gap-2 bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Sincronizando automáticamente...
+                    </div>
+                  )}
+                  
+                  {/* Indicador de transacciones pendientes */}
+                  {pendingTransactions > 0 && !isAutoSyncing && (
+                    <div className="flex items-center gap-2 bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-medium">
+                      <Clock className="h-4 w-4" />
+                      {pendingTransactions} pendiente{pendingTransactions > 1 ? 's' : ''}
+                    </div>
+                  )}
+                  
+                  {/* Indicador de sin datos */}
+                  {isOnline && productos.length === 0 && !loadingProducts && (
+                    <div className="flex items-center gap-2 bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">
+                      <AlertTriangle className="h-4 w-4" />
+                      Sin datos
+                    </div>
+                  )}
+                </div>
                 <p className="text-lg text-gray-600 mt-2">
                   Gestión de inventario por unidades individuales
                 </p>
               </div>
             </div>
             
-            <button
-              onClick={handleRefreshData}
-              disabled={loadingProducts}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium"
-            >
-              <RefreshCw className={`h-4 w-4 ${loadingProducts ? 'animate-spin' : ''}`} />
-              Actualizar Datos
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleRefreshData}
+                disabled={loadingProducts}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium"
+              >
+                <RefreshCw className={`h-4 w-4 ${loadingProducts ? 'animate-spin' : ''}`} />
+                {loadingProducts ? 'Cargando...' : 'Actualizar Datos'}
+              </button>
+
+              {/* Botón de sincronización manual */}
+              {pendingTransactions > 0 && isOnline && (
+                <button
+                  onClick={async () => {
+                    setLoadingProducts(true);
+                    try {
+                      const { synced, failed } = await offlineService.syncPendingTransactions();
+                      setPendingTransactions(offlineService.getPendingTransactionCount());
+                      
+                      if (synced > 0 || failed > 0) {
+                        showToast(`Sincronización: ${synced} exitosas, ${failed} fallidas`, synced > 0 ? 'success' : 'error');
+                      }
+                      
+                      // Recargar datos después de sincronizar
+                      await loadData();
+                    } catch (error) {
+                      console.error('Error syncing:', error);
+                      showToast('Error al sincronizar transacciones', 'error');
+                    } finally {
+                      setLoadingProducts(false);
+                    }
+                  }}
+                  disabled={loadingProducts}
+                  className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium"
+                >
+                  <Send className="h-4 w-4" />
+                  Sincronizar ({pendingTransactions})
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

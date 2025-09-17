@@ -1,17 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import LoginPage from './components/LoginPage';
 import LoadingSpinner from './components/LoadingSpinner';
 import { FilterState } from './types/inventory';
 import { InventoryViewService, InventoryStats } from './utils/inventoryViewService';
 import { StockAlertService } from './utils/alertService';
-import { ScheduledReportService } from './utils/scheduledReportService';
 import Header from './components/Header';
 import TabNavigation from './components/TabNavigation';
 import StatsOverview from './components/StatsOverview';
 import FilterBar from './components/FilterBar';
 import InventoryTable from './components/InventoryTable';
-import AlertSettings from './components/AlertSettings';
 import UpdateUnidadesModule from './components/UpdateUnidadesModule';
 import UpdateRecetasModule from './components/UpdateRecetasModule';
 import ControlTransaccionesModule from './components/ControlTransaccionesModule';
@@ -42,7 +40,7 @@ function App() {
   const [alertService] = useState(() => new StockAlertService());
   
   // Scheduled report service instance
-  const [reportService] = useState(() => ScheduledReportService.getInstance());
+  // const [reportService] = useState(() => ScheduledReportService.getInstance());
 
   // Función para cargar datos
   const loadData = async () => {
@@ -67,6 +65,7 @@ function App() {
         producto: product.producto_nombre,
         stock_barra: product.locations.find(loc => loc.ubicacion === 'barra')?.cantidad_unidades || 0,
         stock_bodega: product.locations.find(loc => loc.ubicacion === 'bodega')?.cantidad_unidades || 0,
+        stock_terraza: product.locations.find(loc => loc.ubicacion === 'terraza')?.cantidad_unidades || 0,
         stock_total: product.total_stock,
         costo_unitario: product.total_valuation / product.total_stock || 0,
         valoracion: product.total_valuation,
@@ -242,6 +241,7 @@ function App() {
                 producto: product.producto_nombre,
                 stock_barra: product.locations.find(loc => loc.ubicacion === 'barra')?.cantidad_unidades || 0,
                 stock_bodega: product.locations.find(loc => loc.ubicacion === 'bodega')?.cantidad_unidades || 0,
+                stock_terraza: product.locations.find(loc => loc.ubicacion === 'terraza')?.cantidad_unidades || 0,
                 stock_total: product.total_stock,
                 costo_unitario: product.total_valuation / product.total_stock || 0,
                 valoracion: product.total_valuation,
@@ -258,7 +258,6 @@ function App() {
               producto: product.producto_nombre,
               stock_barra: product.locations.find(loc => loc.ubicacion === 'barra')?.cantidad_unidades || 0,
               stock_bodega: product.locations.find(loc => loc.ubicacion === 'bodega')?.cantidad_unidades || 0,
-              stock_terraza: product.locations.find(loc => loc.ubicacion === 'terraza')?.cantidad_unidades || 0,
               stock_terraza: product.locations.find(loc => loc.ubicacion === 'terraza')?.cantidad_unidades || 0,
               stock_total: product.total_stock,
               costo_unitario: product.total_valuation / product.total_stock || 0,
