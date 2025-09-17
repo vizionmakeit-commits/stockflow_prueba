@@ -691,14 +691,14 @@ const AdminModule: React.FC<AdminModuleProps> = ({ criticalItemsCount = 0 }) => 
         <div>
           {/* Alertas Tab */}
           {activeTab === 'alertas' && (
-            <div className="p-8">
+            <div className="p-4 sm:p-6 lg:p-8">
               <AlertSettings criticalItemsCount={criticalItemsCount} />
             </div>
           )}
 
           {/* Usuarios Tab - Placeholder */}
           {activeTab === 'usuarios' && (
-            <div className="p-8">
+            <div className="p-4 sm:p-6 lg:p-8">
               <>
                 {/* Header de Usuarios */}
                 <div className="flex items-center justify-between mb-6">

@@ -789,7 +789,7 @@ const UpdateRecetasModule: React.FC = () => {
         </div>
 
         {/* Content */}
-        <div className="p-8">
+        <div className="p-4 sm:p-6 lg:p-8">
           {!showEditor ? (
             // Vista Principal - Venta de Recetas
             <>

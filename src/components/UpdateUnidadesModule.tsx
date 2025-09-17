@@ -578,130 +578,136 @@ const UpdateUnidadesModule: React.FC = () => {
         </div>
 
         {/* Content */}
-        <div className="p-8">
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 mb-6">
-              <Package className="h-6 w-6 text-blue-600" />
-              <h2 className="text-2xl font-bold text-gray-900">Actualización por Unidades</h2>
+        <div className="p-4 sm:p-6 lg:p-8">
+          <div className="space-y-4 sm:space-y-6">
+            <div className="flex items-center gap-3 mb-4 sm:mb-6">
+              <Package className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Actualización por Unidades</h2>
             </div>
 
-            {/* Formulario */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-              {/* Destilado */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Destilado
-                </label>
-                <select
-                  value={selectedDestilado}
-                  onChange={(e) => {
-                    setSelectedDestilado(e.target.value);
-                    setSelectedProducto(''); // Reset producto when destilado changes
-                  }}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Seleccionar destilado</option>
-                  {destilados.map((destilado) => (
-                    <option key={destilado} value={destilado}>
-                      {destilado}
-                    </option>
-                  ))}
-                </select>
+            {/* Formulario Responsive */}
+            <div className="space-y-4">
+              {/* Mobile: Stack all fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {/* Destilado */}
+                <div className="sm:col-span-2 xl:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Destilado
+                  </label>
+                  <select
+                    value={selectedDestilado}
+                    onChange={(e) => {
+                      setSelectedDestilado(e.target.value);
+                      setSelectedProducto(''); // Reset producto when destilado changes
+                    }}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  >
+                    <option value="">Seleccionar destilado</option>
+                    {destilados.map((destilado) => (
+                      <option key={destilado} value={destilado}>
+                        {destilado}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Producto */}
+                <div className="sm:col-span-2 xl:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Producto
+                  </label>
+                  <select
+                    value={selectedProducto}
+                    onChange={(e) => setSelectedProducto(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm disabled:bg-gray-100"
+                    disabled={!selectedDestilado}
+                  >
+                    <option value="">Seleccionar producto</option>
+                    {productosDisponibles.map((producto) => (
+                      <option key={producto} value={producto}>
+                        {producto}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Cantidad */}
+                <div className="sm:col-span-1 xl:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Cantidad
+                  </label>
+                  <input
+                    type="number"
+                    value={cantidad}
+                    onChange={(e) => setCantidad(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    placeholder="0"
+                    min="1"
+                  />
+                </div>
               </div>
 
-              {/* Producto */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Producto
-                </label>
-                <select
-                  value={selectedProducto}
-                  onChange={(e) => setSelectedProducto(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  disabled={!selectedDestilado}
-                >
-                  <option value="">Seleccionar producto</option>
-                  {productosDisponibles.map((producto) => (
-                    <option key={producto} value={producto}>
-                      {producto}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Second row - Operation & Locations */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* Operación */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Operación
+                  </label>
+                  <select
+                    value={operacion}
+                    onChange={(e) => setOperacion(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  >
+                    <option value="">Seleccionar</option>
+                    <option value="Entrada Stock">Entrada Stock</option>
+                    <option value="Salida Stock">Salida Stock</option>
+                    <option value="Transferencia">Transferencia</option>
+                    <option value="Ajuste Inventario">Ajuste Inventario</option>
+                  </select>
+                </div>
 
-              {/* Cantidad */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Cantidad
-                </label>
-                <input
-                  type="number"
-                  value={cantidad}
-                  onChange={(e) => setCantidad(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="0"
-                  min="1"
-                />
-              </div>
+                {/* Origen */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Origen
+                  </label>
+                  <select
+                    value={origen}
+                    onChange={(e) => setOrigen(e.target.value)}
+                    disabled={isOrigenDisabled}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  >
+                    <option value="">Seleccionar origen</option>
+                    <option value="barra">Barra</option>
+                    <option value="bodega">Bodega</option>
+                  </select>
+                </div>
 
-              {/* Operación */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Operación
-                </label>
-                <select
-                  value={operacion}
-                  onChange={(e) => setOperacion(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Seleccionar</option>
-                  <option value="Entrada Stock">Entrada Stock</option>
-                  <option value="Salida Stock">Salida Stock</option>
-                  <option value="Transferencia">Transferencia</option>
-                  <option value="Ajuste Inventario">Ajuste Inventario</option>
-                </select>
-              </div>
-
-              {/* Origen */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Origen
-                </label>
-                <select
-                  value={origen}
-                  onChange={(e) => setOrigen(e.target.value)}
-                  disabled={isOrigenDisabled}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-                >
-                  <option value="">Seleccionar origen</option>
-                  <option value="barra">Barra</option>
-                  <option value="bodega">Bodega</option>
-                </select>
-              </div>
-
-              {/* Destino */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Destino
-                </label>
-                <select
-                  value={destino}
-                  onChange={(e) => setDestino(e.target.value)}
-                  disabled={isDestinoDisabled}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-                >
-                  <option value="">Seleccionar destino</option>
-                  <option value="barra">Barra</option>
-                  <option value="bodega">Bodega</option>
-                </select>
+                {/* Destino */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Destino
+                  </label>
+                  <select
+                    value={destino}
+                    onChange={(e) => setDestino(e.target.value)}
+                    disabled={isDestinoDisabled}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  >
+                    <option value="">Seleccionar destino</option>
+                    <option value="barra">Barra</option>
+                    <option value="bodega">Bodega</option>
+                  </select>
+                </div>
               </div>
             </div>
 
             {/* Error de Transferencia */}
             {showTransferenciaError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 sm:p-4">
                 <div className="flex items-center gap-2 text-red-800">
-                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                   <span className="text-sm font-medium">
                     Error: El origen y destino no pueden ser iguales en una transferencia
                   </span>
@@ -709,59 +715,60 @@ const UpdateUnidadesModule: React.FC = () => {
               </div>
             )}
 
-            {/* Vista Previa Visual */}
+            {/* Vista Previa Visual - Responsive */}
             {(selectedProducto || operacion || origen || destino || costoTotalMovimiento > 0) && (
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <Eye className="h-5 w-5 text-blue-600" />
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 sm:p-6 border border-blue-200">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
+                  <Eye className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                   Vista Previa del Movimiento
                 </h3>
                 
-                <div className="flex flex-wrap gap-3">
+                {/* Mobile: Stack preview items */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:flex xl:flex-wrap gap-2 sm:gap-3">
                   {selectedProducto && (
-                    <div className="flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-2 rounded-full text-sm font-medium">
-                      <Wine className="h-4 w-4" />
-                      Producto: {selectedProducto} ({cantidad || '0'} unidades)
+                    <div className="flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-2 rounded-full text-xs sm:text-sm font-medium">
+                      <Wine className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                      <span className="truncate">Producto: {selectedProducto} ({cantidad || '0'} unidades)</span>
                     </div>
                   )}
                   
                   {operacion && (
-                    <div className="flex items-center gap-2 bg-purple-100 text-purple-800 px-3 py-2 rounded-full text-sm font-medium">
-                      <Zap className="h-4 w-4" />
-                      Operación: {operacion}
+                    <div className="flex items-center gap-2 bg-purple-100 text-purple-800 px-3 py-2 rounded-full text-xs sm:text-sm font-medium">
+                      <Zap className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                      <span>Operación: {operacion}</span>
                     </div>
                   )}
                   
                   {origen && (
-                    <div className="flex items-center gap-2 bg-orange-100 text-orange-800 px-3 py-2 rounded-full text-sm font-medium">
-                      <MapPin className="h-4 w-4" />
-                      Origen: {origen === 'barra' ? 'Barra' : 'Bodega'}
+                    <div className="flex items-center gap-2 bg-orange-100 text-orange-800 px-3 py-2 rounded-full text-xs sm:text-sm font-medium">
+                      <MapPin className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                      <span>Origen: {origen === 'barra' ? 'Barra' : 'Bodega'}</span>
                     </div>
                   )}
                   
                   {destino && (
-                    <div className="flex items-center gap-2 bg-green-100 text-green-800 px-3 py-2 rounded-full text-sm font-medium">
-                      <MapPin className="h-4 w-4" />
-                      Destino: {destino === 'barra' ? 'Barra' : 'Bodega'}
+                    <div className="flex items-center gap-2 bg-green-100 text-green-800 px-3 py-2 rounded-full text-xs sm:text-sm font-medium">
+                      <MapPin className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                      <span>Destino: {destino === 'barra' ? 'Barra' : 'Bodega'}</span>
                     </div>
                   )}
                   
                   {costoTotalMovimiento > 0 && (
-                    <div className="flex items-center gap-2 bg-amber-100 text-amber-800 px-3 py-2 rounded-full text-sm font-medium">
-                      <DollarSign className="h-4 w-4" />
-                      Costo Total: ${costoTotalMovimiento.toFixed(2)}
+                    <div className="flex items-center gap-2 bg-amber-100 text-amber-800 px-3 py-2 rounded-full text-xs sm:text-sm font-medium sm:col-span-2 xl:col-span-1">
+                      <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                      <span>Costo Total: ${costoTotalMovimiento.toFixed(2)}</span>
                     </div>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Botón de Envío */}
-            <div className="flex justify-end">
+            {/* Botón de Envío - Responsive */}
+            <div className="flex justify-center sm:justify-end pt-2">
               <button
                 onClick={handleSubmit}
                 disabled={!selectedDestilado || !selectedProducto || !cantidad || !operacion || !isTransferenciaValid || isProcessing}
-                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg transition-all duration-200 font-medium"
+                className="w-full sm:w-auto flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg transition-all duration-200 font-medium text-sm sm:text-base"
               >
                 {isProcessing ? (
                   <RefreshCw className="h-4 w-4 animate-spin" />

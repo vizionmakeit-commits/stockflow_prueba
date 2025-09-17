@@ -1,3 +1,26 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Estilos para scroll horizontal suave */
+.scrollbar-hide {
+  /* Firefox */
+  scrollbar-width: none;
+  
+  /* Safari and Chrome */
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Smooth scroll behavior */
+.scrollbar-hide {
+  scroll-behavior: smooth;
+}
+
+/* Ensure mobile touch scrolling works well */
+@media (max-width: 768px) {
+  .scrollbar-hide {
+    -webkit-overflow-scrolling: touch;
+  }
+}

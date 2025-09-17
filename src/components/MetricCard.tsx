@@ -24,17 +24,17 @@ const MetricCard: React.FC<MetricCardProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+    <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 border border-gray-100 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-600 mb-2">{title}</p>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
+        <div className="min-w-0 flex-1 pr-3">
+          <p className="text-xs sm:text-sm font-medium text-gray-600 mb-1 sm:mb-2 truncate">{title}</p>
+          <p className="text-lg sm:text-2xl font-bold text-gray-900 truncate">{value}</p>
           {trend && (
-            <p className="text-sm text-green-600 mt-1 font-medium">{trend}</p>
+            <p className="text-xs sm:text-sm text-green-600 mt-1 font-medium truncate">{trend}</p>
           )}
         </div>
-        <div className={`p-3 rounded-lg bg-gradient-to-br ${colorClasses[color as keyof typeof colorClasses]} shadow-lg`}>
-          <Icon className="h-6 w-6 text-white" />
+        <div className={`p-2 sm:p-3 rounded-lg bg-gradient-to-br ${colorClasses[color as keyof typeof colorClasses]} shadow-lg flex-shrink-0`}>
+          <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
         </div>
       </div>
     </div>

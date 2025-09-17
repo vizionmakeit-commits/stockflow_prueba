@@ -35,9 +35,9 @@ const StatsOverview: React.FC<StatsOverviewProps> = ({ inventoryStats }) => {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6 mb-6 lg:mb-8">
       {/* Importe Total del Stock - Métrica Principal */}
-      <div className="md:col-span-2">
+      <div className="sm:col-span-2 lg:col-span-2">
         <MetricCard
           title="IMPORTE TOTAL DEL STOCK"
           value={`$${totalValuation.toLocaleString('es-ES', { minimumFractionDigits: 2 })}`}
@@ -82,21 +82,21 @@ const StatsOverview: React.FC<StatsOverviewProps> = ({ inventoryStats }) => {
         );
       })}
 
-      {/* Producto Más Valioso */}
+      {/* Producto Más Valioso - Responsive */}
       {mostValuableProduct && (
-        <div className="md:col-span-2">
-          <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl shadow-lg p-6 text-white">
+        <div className="sm:col-span-2 lg:col-span-2">
+          <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl shadow-lg p-4 sm:p-6 text-white">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-amber-100 text-sm font-medium mb-1">PRODUCTO MÁS VALIOSO</p>
-                <p className="text-xl font-bold mb-1">{mostValuableProduct.producto_nombre}</p>
-                <p className="text-amber-100 text-sm">{mostValuableProduct.destilado}</p>
-                <p className="text-2xl font-bold mt-2">
+              <div className="min-w-0 flex-1 pr-3">
+                <p className="text-amber-100 text-xs sm:text-sm font-medium mb-1 truncate">PRODUCTO MÁS VALIOSO</p>
+                <p className="text-lg sm:text-xl font-bold mb-1 truncate">{mostValuableProduct.producto_nombre}</p>
+                <p className="text-amber-100 text-xs sm:text-sm truncate">{mostValuableProduct.destilado}</p>
+                <p className="text-xl sm:text-2xl font-bold mt-2 truncate">
                   ${mostValuableProduct.total_valuation.toFixed(2)}
                 </p>
               </div>
-              <div className="p-3 rounded-lg bg-white/20 backdrop-blur-sm">
-                <TrendingUp className="h-8 w-8 text-white" />
+              <div className="p-2 sm:p-3 rounded-lg bg-white/20 backdrop-blur-sm flex-shrink-0">
+                <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
               </div>
             </div>
           </div>

@@ -427,7 +427,7 @@ const ControlTransaccionesModule: React.FC = () => {
           </div>
         </div>
         
-        <div className="p-8">
+        <div className="p-4 sm:p-6 lg:p-8">
           {/* Error Message */}
           {error && (
             <div className="mb-6 bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
