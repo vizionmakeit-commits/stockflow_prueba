@@ -15,12 +15,15 @@ import {
   Package,
   Wine,
   Eye,
-  TrendingUp
+  TrendingUp,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
 import { RecipeService } from '../utils/recipeService';
 import { CostCalculationService, IngredientCost } from '../utils/costCalculationService';
 import { Recipe, RecipeWithIngredients } from '../utils/supabaseClient';
+import OfflineService from '../utils/offlineService';
 
 // Interfaces para datos de Supabase
 interface ProductoSupabase {
@@ -92,10 +95,17 @@ const Toast: React.FC<ToastProps> = ({ message, type, onClose }) => {
 };
 
 const UpdateRecetasModule: React.FC = () => {
+  // Servicio offline
+  const offlineService = OfflineService.getInstance();
+  
   // Estados básicos
   const [products, setProducts] = useState<ProductoSupabase[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  
+  // Estados para conectividad y sincronización
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingTransactions, setPendingTransactions] = useState(0);
 
   // Estados para recetas
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -124,23 +134,13 @@ const UpdateRecetasModule: React.FC = () => {
     console.log('🔄 Starting loadProducts...');
     setLoadingProducts(true);
     try {
-      // Cargar productos desde Supabase
-      const { data: productosData, error: productosError } = await supabase
-        .from('productos')
-        .select('id, nombre, destilado, costo_unitario, capacidad_ml_por_unidad, seguimiento_stock')
-        .eq('seguimiento_stock', true)
-        .order('destilado', { ascending: true })
-        .order('nombre', { ascending: true });
-
-      if (productosError) {
-        throw new Error(`Error cargando productos: ${productosError.message}`);
-      }
-
+      // Usar offlineService en lugar de llamadas directas a Supabase
+      const { productos: productosData } = await offlineService.getData();
       setProducts(productosData || []);
       console.log('✅ Products loaded successfully:', productosData?.length || 0, 'items');
     } catch (error) {
       console.error('❌ Error loading products:', error);
-      showToast('Error al cargar productos desde Supabase', 'error');
+      showToast('Error al cargar productos', 'error');
     } finally {
       setLoadingProducts(false);
     }
@@ -149,12 +149,49 @@ const UpdateRecetasModule: React.FC = () => {
   const loadRecipes = async () => {
     setLoadingRecipes(true);
     try {
-      const data = await RecipeService.getAllRecipes();
-      setRecipes(data);
-      console.log('✅ Recipes loaded:', data.length, 'recipes');
+      // Intentar cargar desde caché primero si estamos offline
+      const cachedRecipes = localStorage.getItem('stockflow_recipes');
+      
+      if (!isOnline && cachedRecipes) {
+        const recipes = JSON.parse(cachedRecipes);
+        setRecipes(recipes);
+        console.log('✅ Recipes loaded from cache:', recipes.length, 'recipes');
+        return;
+      }
+
+      // Si estamos online, intentar cargar desde Supabase
+      if (isOnline) {
+        const data = await RecipeService.getAllRecipes();
+        setRecipes(data);
+        
+        // Guardar en caché para uso offline
+        localStorage.setItem('stockflow_recipes', JSON.stringify(data));
+        console.log('✅ Recipes loaded from Supabase and cached:', data.length, 'recipes');
+      } else {
+        // Fallback a caché si no hay datos frescos
+        if (cachedRecipes) {
+          const recipes = JSON.parse(cachedRecipes);
+          setRecipes(recipes);
+          console.log('📦 Using cached recipes (offline):', recipes.length, 'recipes');
+        } else {
+          setRecipes([]);
+          showToast('No hay recetas disponibles offline', 'error');
+        }
+      }
     } catch (error) {
       console.error('❌ Error loading recipes:', error);
-      showToast('Error al cargar recetas', 'error');
+      
+      // En caso de error, intentar usar caché
+      const cachedRecipes = localStorage.getItem('stockflow_recipes');
+      if (cachedRecipes) {
+        const recipes = JSON.parse(cachedRecipes);
+        setRecipes(recipes);
+        console.log('📦 Fallback to cached recipes after error:', recipes.length, 'recipes');
+        showToast('Usando recetas en caché (error de conexión)', 'error');
+      } else {
+        setRecipes([]);
+        showToast('Error al cargar recetas', 'error');
+      }
     } finally {
       setLoadingRecipes(false);
     }
@@ -168,17 +205,111 @@ const UpdateRecetasModule: React.FC = () => {
     console.log('🚀 UpdateRecetasModule mounted, loading initial data...');
     loadProducts();
     loadRecipes();
+    
+    // Actualizar contador de transacciones pendientes
+    setPendingTransactions(offlineService.getPendingTransactionCount());
+  }, []);
+
+  // Manejar cambios de conectividad
+  useEffect(() => {
+    const handleOnline = async () => {
+      console.log('🌐 Connection restored, syncing...');
+      setIsOnline(true);
+      
+      try {
+        const { synced, failed } = await offlineService.syncPendingTransactions();
+        setPendingTransactions(offlineService.getPendingTransactionCount());
+        
+        if (synced > 0) {
+          showToast(`✅ Sincronizadas ${synced} transacciones`, 'success');
+          // Recargar datos después de sincronizar
+          await loadProducts();
+        }
+        
+        if (failed > 0) {
+          showToast(`⚠️ ${failed} transacciones fallaron`, 'error');
+        }
+      } catch (error) {
+        console.error('Error during auto-sync:', error);
+      }
+    };
+
+    const handleOffline = () => {
+      console.log('📴 Connection lost, switching to offline mode');
+      setIsOnline(false);
+      showToast('Modo offline activado', 'error');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      offlineService.cleanup();
+    };
   }, []);
 
   // Cargar datos de receta seleccionada
   useEffect(() => {
     const loadSelectedRecipeData = async () => {
       if (selectedRecipe) {
+        console.log('🔍 Loading recipe data for selectedRecipe:', selectedRecipe);
+        
         try {
-          const recipeData = await RecipeService.getRecipeWithIngredients(parseInt(selectedRecipe));
-          setSelectedRecipeData(recipeData);
+          // Primero, intentar encontrar la receta en la lista cargada
+          const recipeInList = recipes.find(r => r.id.toString() === selectedRecipe);
+          console.log('🔍 Recipe found in list:', recipeInList);
+          
+          if (recipeInList) {
+            // Intentar cargar desde caché individual
+            const cacheKey = `stockflow_recipe_${selectedRecipe}`;
+            const cachedRecipe = localStorage.getItem(cacheKey);
+            
+            if (!isOnline && cachedRecipe) {
+              const recipeData = JSON.parse(cachedRecipe);
+              setSelectedRecipeData(recipeData);
+              console.log('📦 Recipe loaded from cache:', recipeData.name);
+              return;
+            }
+
+            // Si estamos online, cargar desde Supabase
+            if (isOnline) {
+              const recipeData = await RecipeService.getRecipeWithIngredients(parseInt(selectedRecipe));
+              setSelectedRecipeData(recipeData);
+              
+              // Guardar en caché
+              localStorage.setItem(cacheKey, JSON.stringify(recipeData));
+              console.log('✅ Recipe loaded and cached:', recipeData?.name);
+            } else {
+              // Fallback a caché
+              if (cachedRecipe) {
+                const recipeData = JSON.parse(cachedRecipe);
+                setSelectedRecipeData(recipeData);
+                console.log('📦 Using cached recipe (offline):', recipeData.name);
+              } else {
+                setSelectedRecipeData(null);
+                showToast('Receta no disponible offline', 'error');
+              }
+            }
+          } else {
+            console.log('❌ Recipe not found in recipes list');
+            setSelectedRecipeData(null);
+          }
         } catch (error) {
           console.error('Error loading recipe data:', error);
+          
+          // Fallback a caché en caso de error
+          const cacheKey = `stockflow_recipe_${selectedRecipe}`;
+          const cachedRecipe = localStorage.getItem(cacheKey);
+          if (cachedRecipe) {
+            const recipeData = JSON.parse(cachedRecipe);
+            setSelectedRecipeData(recipeData);
+            console.log('📦 Fallback to cached recipe after error:', recipeData.name);
+          } else {
+            setSelectedRecipeData(null);
+            showToast('Error al cargar receta', 'error');
+          }
         }
       } else {
         setSelectedRecipeData(null);
@@ -186,7 +317,7 @@ const UpdateRecetasModule: React.FC = () => {
     };
 
     loadSelectedRecipeData();
-  }, [selectedRecipe]);
+  }, [selectedRecipe, isOnline]);
 
   // Calcular costos de ingredientes en tiempo real
   useEffect(() => {
@@ -223,7 +354,7 @@ const UpdateRecetasModule: React.FC = () => {
     calculateCosts();
   }, [ingredients]);
 
-  const destilados = [...new Set(products.map(p => p.destilado))].sort();
+  const destilados = [...new Set(products.map(p => p.destilado).filter((d): d is string => d !== null))].sort();
 
   const getProductosDisponibles = (destilado: string) => {
     return destilado 
@@ -392,6 +523,10 @@ const UpdateRecetasModule: React.FC = () => {
   };
 
   const handleConfirmSale = async () => {
+    console.log('🔍 Debug - selectedRecipe:', selectedRecipe);
+    console.log('🔍 Debug - selectedRecipeData:', selectedRecipeData);
+    console.log('🔍 Debug - saleQuantity:', saleQuantity);
+    
     if (!selectedRecipeData || !saleQuantity) {
       showToast('Selecciona una receta y cantidad válida', 'error');
       return;
@@ -405,28 +540,39 @@ const UpdateRecetasModule: React.FC = () => {
       // Obtener ID de usuario actual (simplificado para testing)
       const currentUserId = 'admin_default'; // En producción, obtener del contexto de auth
       
-      // PASO 1: Insertar registro de venta en tabla ventas
-      const { data: ventaData, error: ventaError } = await supabase
-        .from('ventas')
-        .insert({
-          id_externo_venta: `RECETA-${Date.now()}`,
-          fecha_venta: new Date().toISOString(),
-          total: (selectedRecipeData.sale_price || 0) * parseInt(saleQuantity),
-          json_original: {
-            receta: selectedRecipeData.name,
-            cantidad: parseInt(saleQuantity),
-            ingredientes: selectedRecipeData.recipe_ingredients
+      let ventaId = `RECETA-${Date.now()}`;
+      
+      // PASO 1: Crear registro de venta (si estamos online)
+      if (isOnline) {
+        try {
+          const { data: ventaData, error: ventaError } = await supabase
+            .from('ventas')
+            .insert({
+              id_externo_venta: ventaId,
+              fecha_venta: new Date().toISOString(),
+              total: (selectedRecipeData.sale_price || 0) * parseInt(saleQuantity),
+              json_original: {
+                receta: selectedRecipeData.name,
+                cantidad: parseInt(saleQuantity),
+                ingredientes: selectedRecipeData.recipe_ingredients
+              }
+            })
+            .select('id')
+            .single();
+
+          if (ventaError) {
+            throw new Error(`Error creando registro de venta: ${ventaError.message}`);
           }
-        })
-        .select('id')
-        .single();
 
-      if (ventaError) {
-        throw new Error(`Error creando registro de venta: ${ventaError.message}`);
+          ventaId = ventaData.id;
+          console.log('✅ Sale record created with ID:', ventaId);
+        } catch (error) {
+          console.warn('⚠️ Could not create sale record, using fallback ID:', error);
+          // En caso de error, usar el ID temporal generado
+        }
+      } else {
+        console.log('📴 Offline mode: using temporary sale ID:', ventaId);
       }
-
-      const ventaId = ventaData.id;
-      console.log('✅ Sale record created with ID:', ventaId);
 
       // PASO 2: Calcular costos de ingredientes
       const ingredientCosts = await Promise.all(
@@ -471,35 +617,36 @@ const UpdateRecetasModule: React.FC = () => {
 
       console.log('📦 Created transaction payloads:', transactionPayloads.length, 'transactions');
 
-      // PASO 4: Enviar transacciones al nuevo endpoint
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-manual-transaction`;
-      
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(transactionPayloads)
-      });
+      // PASO 4: Procesar transacciones usando offlineService
+      const transactionResults = await Promise.all(
+        transactionPayloads.map(payload => offlineService.processTransaction(payload))
+      );
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+      // Verificar si todas las transacciones fueron exitosas
+      const failed = transactionResults.filter(result => !result.success);
+      if (failed.length > 0) {
+        console.error('❌ Some transactions failed:', failed);
         
-        // Si falla el procesamiento de transacciones, eliminar la venta creada
-        await supabase.from('ventas').delete().eq('id', ventaId);
+        // Si falla el procesamiento de transacciones y estamos online, intentar eliminar la venta creada
+        if (isOnline && typeof ventaId === 'number') {
+          try {
+            await supabase.from('ventas').delete().eq('id', ventaId);
+            console.log('🗑️ Sale record deleted due to transaction failures');
+          } catch (deleteError) {
+            console.warn('⚠️ Could not delete sale record:', deleteError);
+          }
+        }
         
-        throw new Error(`Error procesando transacciones: ${response.status} - ${errorData.error || 'Error desconocido'}`);
+        throw new Error(`Error procesando ${failed.length} transacciones`);
       }
 
-      const responseData = await response.json();
-      console.log('✅ Recipe sale processed successfully:', responseData);
+      // Actualizar contador de transacciones pendientes
+      setPendingTransactions(offlineService.getPendingTransactionCount());
+
+      console.log('✅ Recipe sale processed successfully with offlineService');
       
-      if (responseData.success) {
-        showToast(`✅ Venta de receta procesada exitosamente (${transactionPayloads.length} ingredientes)`, 'success');
-      } else {
-        throw new Error(responseData.error || 'Error procesando venta de receta');
-      }
+      // Todas las transacciones fueron exitosas
+      showToast(`✅ Venta de receta procesada exitosamente (${transactionPayloads.length} ingredientes)`, 'success');
       
       setSelectedRecipe('');
       setSelectedRecipeData(null);
@@ -585,14 +732,59 @@ const UpdateRecetasModule: React.FC = () => {
               </div>
             </div>
             
-            <button
-              onClick={handleRefreshData}
-              disabled={loadingProducts}
-              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium"
-            >
-              <RefreshCw className={`h-4 w-4 ${loadingProducts ? 'animate-spin' : ''}`} />
-              Actualizar Datos
-            </button>
+            <div className="flex items-center gap-3">
+              {/* Indicador de conectividad */}
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${
+                isOnline ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+              }`}>
+                {isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+                {isOnline ? 'En línea' : 'Sin conexión'}
+                {pendingTransactions > 0 && (
+                  <span className="ml-2 bg-orange-500 text-white text-xs px-2 py-1 rounded-full">
+                    {pendingTransactions} pendientes
+                  </span>
+                )}
+              </div>
+
+              {/* Botón de sincronización manual */}
+              {pendingTransactions > 0 && isOnline && (
+                <button
+                  onClick={async () => {
+                    setLoadingProducts(true);
+                    try {
+                      const { synced, failed } = await offlineService.syncPendingTransactions();
+                      setPendingTransactions(offlineService.getPendingTransactionCount());
+                      
+                      if (synced > 0 || failed > 0) {
+                        showToast(`Sincronización: ${synced} exitosas, ${failed} fallidas`, synced > 0 ? 'success' : 'error');
+                      }
+                      
+                      // Recargar datos después de sincronizar
+                      await loadProducts();
+                    } catch (error) {
+                      console.error('Error syncing:', error);
+                      showToast('Error al sincronizar transacciones', 'error');
+                    } finally {
+                      setLoadingProducts(false);
+                    }
+                  }}
+                  disabled={loadingProducts}
+                  className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium"
+                >
+                  <Send className="h-4 w-4" />
+                  Sincronizar ({pendingTransactions})
+                </button>
+              )}
+            
+              <button
+                onClick={handleRefreshData}
+                disabled={loadingProducts}
+                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium"
+              >
+                <RefreshCw className={`h-4 w-4 ${loadingProducts ? 'animate-spin' : ''}`} />
+                Actualizar Datos
+              </button>
+            </div>
           </div>
         </div>
 
@@ -610,17 +802,27 @@ const UpdateRecetasModule: React.FC = () => {
                 <div className="flex gap-3">
                   <button
                     onClick={() => setShowEditor(true)}
-                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium"
+                    disabled={!isOnline}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 font-medium ${
+                      isOnline 
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                        : 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                    }`}
                   >
                     <Plus className="h-4 w-4" />
-                    Nueva Receta
+                    Nueva Receta {!isOnline && '(Solo online)'}
                   </button>
                   
                   {selectedRecipe && (
                     <>
                       <button
                         onClick={handleEditRecipe}
-                        className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium"
+                        disabled={!isOnline}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 font-medium ${
+                          isOnline 
+                            ? 'bg-amber-600 hover:bg-amber-700 text-white' 
+                            : 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                        }`}
                       >
                         <Edit className="h-4 w-4" />
                         Editar
@@ -628,7 +830,12 @@ const UpdateRecetasModule: React.FC = () => {
                       
                       <button
                         onClick={handleDeleteRecipe}
-                        className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-all duration-200 font-medium"
+                        disabled={!isOnline}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 font-medium ${
+                          isOnline 
+                            ? 'bg-red-600 hover:bg-red-700 text-white' 
+                            : 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                        }`}
                       >
                         <Trash2 className="h-4 w-4" />
                         Eliminar
